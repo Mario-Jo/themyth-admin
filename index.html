@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Myth — Home Screen Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --cream:#FAFAF8; --soft:#F4F4F1; --ink:#1B1B19; --line:#E6E5E0;
+    --red:#C8102E; --text2:#6B6B66;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { font:15px/1.5 -apple-system, "Helvetica Neue", sans-serif; background:var(--cream); color:var(--ink); }
+  .wrap { max-width:860px; margin:0 auto; padding:32px 20px 80px; }
+  h1 { font-family:Georgia, serif; font-size:30px; margin-bottom:4px; }
+  h1 .red { color:var(--red); }
+  .sub { color:var(--text2); margin-bottom:28px; }
+  section { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; margin-bottom:18px; }
+  section h2 { font-family:Georgia, serif; font-size:19px; margin-bottom:4px; }
+  section .hint { font-size:13px; color:var(--text2); margin-bottom:14px; }
+  label { display:block; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); margin:12px 0 4px; }
+  input[type=text], input[type=email], input[type=password], input[type=search] {
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    font-size:15px; background:var(--soft);
+  }
+  button { cursor:pointer; border:none; border-radius:999px; padding:10px 20px; font-size:14px; font-weight:600; }
+  .primary { background:var(--ink); color:var(--cream); }
+  .danger  { background:var(--red); color:#fff; }
+  .ghost   { background:var(--soft); color:var(--ink); border:1px solid var(--line); }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .preview { max-width:100%; max-height:260px; border-radius:12px; border:1px solid var(--line); display:block; margin:8px 0; }
+  .chip { display:inline-flex; align-items:center; gap:8px; background:var(--soft); border:1px solid var(--line);
+          border-radius:999px; padding:6px 8px 6px 14px; margin:4px 6px 4px 0; font-weight:600; font-size:13px; }
+  .chip button { padding:2px 8px; font-size:12px; background:transparent; color:var(--text2); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; margin-top:12px; max-height:420px; overflow:auto; }
+  .card { border:1.5px solid var(--line); border-radius:12px; padding:6px; cursor:pointer; background:#fff; text-align:center; }
+  .card img { width:100%; height:110px; object-fit:contain; background:#fff; }
+  .card .n { font-size:11px; line-height:1.3; height:29px; overflow:hidden; }
+  .card .b { font-size:10px; color:var(--text2); }
+  .card.sel { border-color:var(--red); box-shadow:0 0 0 1px var(--red); }
+  .selrow { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .selrow img { width:34px; height:34px; object-fit:contain; }
+  .selrow .n { flex:1; }
+  .selrow button { padding:2px 9px; font-size:12px; }
+  .toggle { display:flex; align-items:center; gap:10px; margin:12px 0; font-weight:600; font-size:14px; }
+  .toggle input { width:20px; height:20px; accent-color:var(--ink); }
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--cream);
+           padding:10px 22px; border-radius:999px; font-size:14px; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  #savebar { position:sticky; bottom:16px; display:flex; justify-content:flex-end; gap:10px; }
+  #savebar .primary { padding:14px 34px; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+  .muted { color:var(--text2); font-size:13px; }
+  #app { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="red">The Myth</span> — Home Screen Admin</h1>
+  <p class="sub">Everything here updates the app's Browse home screen live — no code changes, no rebuild. Users pick it up on next launch or pull-to-refresh.</p>
+
+  <!-- Login -->
+  <section id="login">
+    <h2>Sign in</h2>
+    <p class="hint">Sign in with an admin account (manage admins inside the portal).</p>
+    <label>Email</label><input id="email" type="email" autocomplete="username" placeholder="you@example.com">
+    <label>Password</label><input id="password" type="password" autocomplete="current-password">
+    <div class="row" style="margin-top:14px">
+      <button class="primary" onclick="signIn()">Sign in</button>
+      <span id="loginmsg" class="muted"></span>
+    </div>
+  </section>
+
+  <div id="app">
+    <!-- Hero background -->
+    <section>
+      <h2>Background image</h2>
+      <p class="hint">The full-bleed photo behind the home screen. Clear it to fall back to the campaign artwork bundled in the app.</p>
+      <img id="heroPreview" class="preview" alt="" style="display:none">
+      <div class="row">
+        <input type="file" id="heroFile" accept="image/*">
+        <button class="ghost" onclick="clearHero()">Clear (use bundled)</button>
+      </div>
+    </section>
+
+    <!-- Banner -->
+    <section>
+      <h2>Overlaying banner</h2>
+      <p class="hint">The "ZARA presents BENITO ANTONIO" block over the photo. Use an uploaded artwork, or type a text banner. Artwork wins when both are set.</p>
+      <div class="toggle"><input type="checkbox" id="bannerVisible"> <span>Banner visible</span></div>
+      <img id="bannerPreview" class="preview" alt="" style="display:none">
+      <div class="row">
+        <input type="file" id="bannerFile" accept="image/*">
+        <button class="ghost" onclick="clearBannerArt()">Clear artwork</button>
+      </div>
+      <label>Brand (the "X presents" line — optional)</label><input type="text" id="bannerBrand" placeholder="ZARA">
+      <label>Title</label><input type="text" id="bannerTitle" placeholder="BENITO ANTONIO">
+      <label>Season line (optional)</label><input type="text" id="bannerSeason" placeholder="Spring Summer 2026">
+    </section>
+
+    <!-- Brand buttons -->
+    <section>
+      <h2>Brand buttons</h2>
+      <p class="hint">The filter chips on the hero, in this order. Leave empty to let the app derive them from the catalog. Names must match catalog brands.</p>
+      <div id="brandList"></div>
+      <div class="row">
+        <input type="text" id="brandInput" placeholder="Add a brand… (e.g. ZARA)" style="max-width:280px"
+               onkeydown="if(event.key==='Enter'){addBrand()}">
+        <button class="ghost" onclick="addBrand()">Add</button>
+      </div>
+    </section>
+
+    <!-- Featured items -->
+    <section>
+      <h2>Clothing on the home page</h2>
+      <p class="hint">Hand-pick what the home feed and hero show. Empty selection = the app's automatic, preference-ranked feed. Load the repo's <code>catalog.json</code> to browse items.</p>
+      <div class="row">
+        <input type="file" id="catalogFile" accept=".json">
+        <input type="search" id="itemSearch" placeholder="Search name / brand / category…" style="max-width:300px" oninput="renderGrid()">
+        <span class="muted" id="catCount"></span>
+      </div>
+      <div id="selList" style="margin-top:12px"></div>
+      <div class="grid" id="itemGrid"></div>
+    </section>
+
+    <!-- Admins -->
+    <section>
+      <h2>Admins</h2>
+      <p class="hint">Accounts allowed to edit this portal. They must already exist as app accounts (sign up in the app first).</p>
+      <div id="adminList"></div>
+      <div class="row">
+        <input type="email" id="adminInput" placeholder="new-admin@example.com" style="max-width:280px"
+               onkeydown="if(event.key==='Enter'){addAdmin()}">
+        <button class="ghost" onclick="addAdmin()">Add admin</button>
+      </div>
+    </section>
+
+    <div id="savebar">
+      <button class="ghost" onclick="loadConfig()">Discard changes</button>
+      <button class="primary" onclick="save()">Save to app</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL = "https://ehhqfpkdknzxqzbljfad.supabase.co";
+const SUPABASE_ANON = "sb_publishable_nPc22VD6fgVP-Jw-eTBhmg_2m7-pjqn";
+const BUCKET = "home-assets";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let config = {};          // working copy of the row
+let brands = [];          // brand_buttons working copy
+let featured = [];        // featured_item_ids working copy (ordered)
+let catalog = [];         // loaded catalog.json items
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+let myEmail = "";
+
+async function signIn() {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  document.getElementById("loginmsg").textContent = "Signing in…";
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { document.getElementById("loginmsg").textContent = error.message; return; }
+  myEmail = email.toLowerCase();
+  // RLS hides admin_emails from non-admins — an empty read means this
+  // account can sign in but can't edit anything.
+  const { data: admins } = await sb.from("admin_emails").select("email");
+  if (!admins || !admins.length) {
+    document.getElementById("loginmsg").textContent =
+      "Signed in, but this account isn't an admin — ask an admin to add you.";
+    await sb.auth.signOut();
+    return;
+  }
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  renderAdmins(admins.map(a => a.email));
+  await loadConfig();
+  loadCatalog();
+}
+
+// ---- admins ----------------------------------------------------------------
+function renderAdmins(emails) {
+  const host = document.getElementById("adminList");
+  host.innerHTML = "";
+  emails.sort().forEach(e => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.append(e);
+    if (e.toLowerCase() !== myEmail) {
+      const btn = document.createElement("button");
+      btn.textContent = "✕"; btn.title = "Remove admin";
+      btn.onclick = () => removeAdmin(e);
+      chip.append(btn);
+    }
+    host.appendChild(chip);
+  });
+}
+
+async function refreshAdmins() {
+  const { data } = await sb.from("admin_emails").select("email");
+  renderAdmins((data || []).map(a => a.email));
+}
+
+async function addAdmin() {
+  const input = document.getElementById("adminInput");
+  const email = input.value.trim().toLowerCase();
+  if (!email) return;
+  const { error } = await sb.from("admin_emails").insert({ email });
+  if (error) { toast("Couldn't add: " + error.message); return; }
+  input.value = ""; toast("Admin added");
+  refreshAdmins();
+}
+
+async function removeAdmin(email) {
+  if (!confirm(`Remove ${email} as admin?`)) return;
+  const { error } = await sb.from("admin_emails").delete().eq("email", email);
+  if (error) { toast("Couldn't remove: " + error.message); return; }
+  toast("Admin removed");
+  refreshAdmins();
+}
+
+async function loadConfig() {
+  const { data, error } = await sb.from("home_config").select("*").eq("id", 1).single();
+  if (error) { toast("Couldn't load config: " + error.message); return; }
+  config = data;
+  brands = [...(data.brand_buttons || [])];
+  featured = [...(data.featured_item_ids || [])];
+  setImg("heroPreview", data.hero_image_url);
+  setImg("bannerPreview", data.banner_image_url);
+  document.getElementById("bannerVisible").checked = !!data.banner_visible;
+  document.getElementById("bannerBrand").value  = data.banner_brand  || "";
+  document.getElementById("bannerTitle").value  = data.banner_title  || "";
+  document.getElementById("bannerSeason").value = data.banner_season || "";
+  renderBrands(); renderSelected(); renderGrid();
+}
+
+function setImg(id, url) {
+  const el = document.getElementById(id);
+  if (url) { el.src = url; el.style.display = "block"; } else { el.removeAttribute("src"); el.style.display = "none"; }
+}
+
+// ---- uploads -------------------------------------------------------------
+async function upload(file, prefix) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${prefix}-${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, file, { upsert: true });
+  if (error) throw error;
+  return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+document.getElementById("heroFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { config.hero_image_url = await upload(f, "hero"); setImg("heroPreview", config.hero_image_url); toast("Background uploaded — hit Save"); }
+  catch (err) { toast("Upload failed: " + err.message); }
+});
+document.getElementById("bannerFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { config.banner_image_url = await upload(f, "banner"); setImg("bannerPreview", config.banner_image_url); toast("Banner artwork uploaded — hit Save"); }
+  catch (err) { toast("Upload failed: " + err.message); }
+});
+function clearHero()      { config.hero_image_url = null;   setImg("heroPreview", null); }
+function clearBannerArt() { config.banner_image_url = null; setImg("bannerPreview", null); }
+
+// ---- brand buttons ---------------------------------------------------------
+function renderBrands() {
+  const host = document.getElementById("brandList");
+  host.innerHTML = brands.length ? "" : '<p class="muted">No custom buttons — the app derives chips from the catalog.</p>';
+  brands.forEach((b, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${b}
+      <button title="Move left"  onclick="moveBrand(${i},-1)">‹</button>
+      <button title="Move right" onclick="moveBrand(${i},1)">›</button>
+      <button title="Remove" onclick="removeBrand(${i})">✕</button>`;
+    host.appendChild(chip);
+  });
+}
+function addBrand() {
+  const input = document.getElementById("brandInput");
+  const v = input.value.trim();
+  if (v && !brands.some(b => b.toLowerCase() === v.toLowerCase())) { brands.push(v); renderBrands(); }
+  input.value = "";
+}
+function removeBrand(i) { brands.splice(i, 1); renderBrands(); }
+function moveBrand(i, d) {
+  const j = i + d; if (j < 0 || j >= brands.length) return;
+  [brands[i], brands[j]] = [brands[j], brands[i]]; renderBrands();
+}
+
+// ---- featured items --------------------------------------------------------
+async function loadCatalog() {
+  // Published copy in the public bucket first (works from the hosted portal
+  // anywhere), then the repo-relative path (local http.server), then the
+  // file picker as the manual fallback.
+  const sources = [
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/catalog.json`,
+    "../It%20Fits/catalog.json",
+  ];
+  for (const src of sources) {
+    try {
+      const res = await fetch(src);
+      if (res.ok) { catalog = await res.json(); afterCatalogLoad(); return; }
+    } catch (_) { /* next source */ }
+  }
+}
+document.getElementById("catalogFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { catalog = JSON.parse(await f.text()); afterCatalogLoad(); }
+  catch (err) { toast("Not a valid catalog.json: " + err.message); }
+});
+function afterCatalogLoad() {
+  document.getElementById("catCount").textContent = `${catalog.length} items loaded`;
+  renderSelected(); renderGrid();
+}
+function itemById(id) { return catalog.find(x => x.id === id); }
+
+function renderGrid() {
+  const q = (document.getElementById("itemSearch").value || "").toLowerCase();
+  const host = document.getElementById("itemGrid");
+  host.innerHTML = "";
+  catalog
+    .filter(x => (x.imageUrl || "").startsWith("http"))
+    .filter(x => !q || `${x.name} ${x.brand} ${x.category} ${x.subCategory}`.toLowerCase().includes(q))
+    .slice(0, 200)
+    .forEach(x => {
+      const card = document.createElement("div");
+      card.className = "card" + (featured.includes(x.id) ? " sel" : "");
+      card.innerHTML = `<img loading="lazy" src="${x.imageUrl}"><div class="n">${x.name}</div><div class="b">${x.brand}</div>`;
+      card.onclick = () => {
+        const i = featured.indexOf(x.id);
+        if (i >= 0) featured.splice(i, 1); else featured.push(x.id);
+        renderSelected(); renderGrid();
+      };
+      host.appendChild(card);
+    });
+}
+function renderSelected() {
+  const host = document.getElementById("selList");
+  if (!featured.length) { host.innerHTML = '<p class="muted">Nothing hand-picked — automatic feed.</p>'; return; }
+  host.innerHTML = `<p class="muted">${featured.length} item(s) picked, shown in this order:</p>`;
+  featured.forEach((id, i) => {
+    const it = itemById(id);
+    const row = document.createElement("div");
+    row.className = "selrow";
+    row.innerHTML = `${it ? `<img src="${it.imageUrl}">` : ""}
+      <span class="n">${it ? `${it.name} — ${it.brand}` : id + " (load catalog.json to preview)"}</span>
+      <button class="ghost" onclick="moveSel(${i},-1)">↑</button>
+      <button class="ghost" onclick="moveSel(${i},1)">↓</button>
+      <button class="ghost" onclick="removeSel(${i})">✕</button>`;
+    host.appendChild(row);
+  });
+}
+function moveSel(i, d) {
+  const j = i + d; if (j < 0 || j >= featured.length) return;
+  [featured[i], featured[j]] = [featured[j], featured[i]]; renderSelected();
+}
+function removeSel(i) { featured.splice(i, 1); renderSelected(); renderGrid(); }
+
+// ---- save -------------------------------------------------------------------
+async function save() {
+  const payload = {
+    hero_image_url:   config.hero_image_url || null,
+    banner_image_url: config.banner_image_url || null,
+    banner_visible:   document.getElementById("bannerVisible").checked,
+    banner_brand:     document.getElementById("bannerBrand").value.trim() || null,
+    banner_title:     document.getElementById("bannerTitle").value.trim() || null,
+    banner_season:    document.getElementById("bannerSeason").value.trim() || null,
+    brand_buttons:    brands,
+    featured_item_ids: featured,
+  };
+  const { error } = await sb.from("home_config").update(payload).eq("id", 1);
+  if (error) { toast("Save failed: " + error.message); return; }
+  toast("Saved — the app picks this up on next launch / refresh");
+}
+</script>
+</body>
+</html>
