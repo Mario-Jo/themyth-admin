@@ -332,7 +332,8 @@ function renderGrid() {
     .forEach(x => {
       const card = document.createElement("div");
       card.className = "card" + (featured.includes(x.id) ? " sel" : "");
-      card.innerHTML = `<img loading="lazy" src="${x.imageUrl}"><div class="n">${x.name}</div><div class="b">${x.brand}</div>`;
+      const price = x.price ? `EGP ${Math.round(x.price).toLocaleString()}` : "";
+      card.innerHTML = `<img loading="lazy" src="${x.imageUrl}"><div class="n">${x.name}</div><div class="b">${x.brand}${price ? " · " + price : ""}</div>`;
       card.onclick = () => {
         const i = featured.indexOf(x.id);
         if (i >= 0) featured.splice(i, 1); else featured.push(x.id);
@@ -350,7 +351,7 @@ function renderSelected() {
     const row = document.createElement("div");
     row.className = "selrow";
     row.innerHTML = `${it ? `<img src="${it.imageUrl}">` : ""}
-      <span class="n">${it ? `${it.name} — ${it.brand}` : id + " (load catalog.json to preview)"}</span>
+      <span class="n">${it ? `${it.name} — ${it.brand}${it.price ? " · EGP " + Math.round(it.price).toLocaleString() : ""}` : id + " (load catalog.json to preview)"}</span>
       <button class="ghost" onclick="moveSel(${i},-1)">↑</button>
       <button class="ghost" onclick="moveSel(${i},1)">↓</button>
       <button class="ghost" onclick="removeSel(${i})">✕</button>`;
