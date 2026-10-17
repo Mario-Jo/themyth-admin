@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Myth — Home Screen Admin</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Pinned with SRI: an unpinned @2 would run whatever the CDN serves next with admin rights.
+     To upgrade: bump the version and recompute the hash (openssl dgst -sha384 -binary | openssl base64 -A). -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.min.js"
+        integrity="sha384-q36VSR1ktH2hgqgm+0LDeyqPW8CyZHSxfDSttSPm5ReOJzB+sYThmh7D4fE+jWTs"
+        crossorigin="anonymous"></script>
 <style>
   :root {
     --cream:#FAFAF8; --soft:#F4F4F1; --ink:#1B1B19; --line:#E6E5E0;
@@ -185,10 +189,26 @@ async function signIn() {
   loadCatalog();
 }
 
+// ---- DOM helpers -------------------------------------------------------------
+// Catalog text comes from third-party merchant feeds, so it is only ever set
+// as textContent / attribute values, never parsed as HTML.
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
+}
+function button(label, title, onClick, cls) {
+  const b = el("button", cls, label);
+  b.title = title; b.onclick = onClick;
+  return b;
+}
+function muted(text) { return el("p", "muted", text); }
+
 // ---- admins ----------------------------------------------------------------
 function renderAdmins(emails) {
   const host = document.getElementById("adminList");
-  host.innerHTML = "";
+  host.replaceChildren();
   emails.sort().forEach(e => {
     const chip = document.createElement("span");
     chip.className = "chip";
@@ -271,14 +291,15 @@ function clearBannerArt() { config.banner_image_url = null; setImg("bannerPrevie
 // ---- brand buttons ---------------------------------------------------------
 function renderBrands() {
   const host = document.getElementById("brandList");
-  host.innerHTML = brands.length ? "" : '<p class="muted">No custom buttons — the app derives chips from the catalog.</p>';
+  host.replaceChildren();
+  if (!brands.length) host.append(muted("No custom buttons — the app derives chips from the catalog."));
   brands.forEach((b, i) => {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.innerHTML = `${b}
-      <button title="Move left"  onclick="moveBrand(${i},-1)">‹</button>
-      <button title="Move right" onclick="moveBrand(${i},1)">›</button>
-      <button title="Remove" onclick="removeBrand(${i})">✕</button>`;
+    const chip = el("span", "chip", b);
+    chip.append(
+      button("‹", "Move left",  () => moveBrand(i, -1)),
+      button("›", "Move right", () => moveBrand(i, 1)),
+      button("✕", "Remove",     () => removeBrand(i)),
+    );
     host.appendChild(chip);
   });
 }
@@ -324,7 +345,7 @@ function itemById(id) { return catalog.find(x => x.id === id); }
 function renderGrid() {
   const q = (document.getElementById("itemSearch").value || "").toLowerCase();
   const host = document.getElementById("itemGrid");
-  host.innerHTML = "";
+  host.replaceChildren();
   catalog
     .filter(x => (x.imageUrl || "").startsWith("http"))
     .filter(x => !q || `${x.name} ${x.brand} ${x.category} ${x.subCategory}`.toLowerCase().includes(q))
@@ -333,7 +354,8 @@ function renderGrid() {
       const card = document.createElement("div");
       card.className = "card" + (featured.includes(x.id) ? " sel" : "");
       const price = x.price ? `EGP ${Math.round(x.price).toLocaleString()}` : "";
-      card.innerHTML = `<img loading="lazy" src="${x.imageUrl}"><div class="n">${x.name}</div><div class="b">${x.brand}${price ? " · " + price : ""}</div>`;
+      const img = el("img"); img.loading = "lazy"; img.src = x.imageUrl;
+      card.append(img, el("div", "n", x.name), el("div", "b", `${x.brand}${price ? " · " + price : ""}`));
       card.onclick = () => {
         const i = featured.indexOf(x.id);
         if (i >= 0) featured.splice(i, 1); else featured.push(x.id);
@@ -344,17 +366,18 @@ function renderGrid() {
 }
 function renderSelected() {
   const host = document.getElementById("selList");
-  if (!featured.length) { host.innerHTML = '<p class="muted">Nothing hand-picked — automatic feed.</p>'; return; }
-  host.innerHTML = `<p class="muted">${featured.length} item(s) picked, shown in this order:</p>`;
+  if (!featured.length) { host.replaceChildren(muted("Nothing hand-picked — automatic feed.")); return; }
+  host.replaceChildren(muted(`${featured.length} item(s) picked, shown in this order:`));
   featured.forEach((id, i) => {
     const it = itemById(id);
-    const row = document.createElement("div");
-    row.className = "selrow";
-    row.innerHTML = `${it ? `<img src="${it.imageUrl}">` : ""}
-      <span class="n">${it ? `${it.name} — ${it.brand}${it.price ? " · EGP " + Math.round(it.price).toLocaleString() : ""}` : id + " (load catalog.json to preview)"}</span>
-      <button class="ghost" onclick="moveSel(${i},-1)">↑</button>
-      <button class="ghost" onclick="moveSel(${i},1)">↓</button>
-      <button class="ghost" onclick="removeSel(${i})">✕</button>`;
+    const row = el("div", "selrow");
+    if (it) { const img = el("img"); img.src = it.imageUrl; row.append(img); }
+    row.append(
+      el("span", "n", it ? `${it.name} — ${it.brand}${it.price ? " · EGP " + Math.round(it.price).toLocaleString() : ""}` : id + " (load catalog.json to preview)"),
+      button("↑", "Move up",   () => moveSel(i, -1), "ghost"),
+      button("↓", "Move down", () => moveSel(i, 1),  "ghost"),
+      button("✕", "Remove",    () => removeSel(i),   "ghost"),
+    );
     host.appendChild(row);
   });
 }
